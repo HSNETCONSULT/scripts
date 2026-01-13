@@ -310,6 +310,9 @@ echo
 echo -e "4. Quando um dispositivo for monitorado, valide a instalação:"
 echo -e "${VERDE}su librenms -c /opt/librenms/validate.php${NC}"
 echo
+echo -e "4. Caso queira trocar o IP ou dominio de Acesso use esse comando:"
+echo -e "${VERDE}sudo su - librenms -c "lnms config:set base_url http://NOVO_IP_OU_DOMINIO"${NC}"
+echo
 echo -e "${AZUL}HSNET CONSULTORIA - Soluções em Monitoramento${NC}"
 echo
 
