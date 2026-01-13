@@ -40,14 +40,20 @@ IP_AUTOMATICO=$(hostname -I | awk '{print $1}')
 echo -e "${AMARELO}>>> IP detectado automaticamente: ${VERDE}$IP_AUTOMATICO${NC}"
 echo
 
-# Solicitação de senha em Português
+# Solicitação de senha em Português - Ajustado para garantir que espere a digitação
 echo -e "${AZUL}Configuração do Banco de Dados:${NC}"
-read -sp "Digite a senha do banco de dados MySQL para o usuário librenms: " DATABASEPASSWORD
+# Usamos </dev/tty para garantir que o read leia do teclado mesmo se rodar via pipe
+read -sp "Digite a senha do banco de dados MySQL para o usuário librenms: " DATABASEPASSWORD </dev/tty
 echo
+if [ -z "$DATABASEPASSWORD" ]; then
+    echo -e "${VERMELHO}Erro: A senha não pode ser vazia. Por favor, execute o script novamente.${NC}"
+    exit 1
+fi
+echo -e "${VERDE}Senha configurada com sucesso!${NC}"
 echo
 
 # Usar o IP detectado como hostname padrão, mas permitir alteração
-read -p "Digite o hostname do servidor web (Padrão: $IP_AUTOMATICO): " WEBSERVERHOSTNAME
+read -p "Digite o hostname do servidor web (Padrão: $IP_AUTOMATICO): " WEBSERVERHOSTNAME </dev/tty
 WEBSERVERHOSTNAME=${WEBSERVERHOSTNAME:-$IP_AUTOMATICO}
 
 echo
@@ -272,6 +278,8 @@ sed -i "s/#DB_HOST=/DB_HOST=localhost/" /opt/librenms/.env
 sed -i "s/#DB_DATABASE=/DB_DATABASE=librenms/" /opt/librenms/.env
 sed -i "s/#DB_USERNAME=/DB_USERNAME=librenms/" /opt/librenms/.env
 sed -i "s/#DB_PASSWORD=/DB_PASSWORD=$DATABASEPASSWORD/" /opt/librenms/.env
+# Configura a APP_URL para evitar erros de navegação (como na logo)
+sed -i "s|#APP_URL=|APP_URL=http://$WEBSERVERHOSTNAME|" /opt/librenms/.env
 
 echo
 echo -e "${MAGENTA}#################################################${NC}"
