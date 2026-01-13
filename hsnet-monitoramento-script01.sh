@@ -303,7 +303,6 @@ echo -e "4. Quando um dispositivo for monitorado, valide a instalação:"
 echo -e "${VERDE}su librenms -c /opt/librenms/validate.php${NC}"
 echo
 echo -e "${AZUL}HSNET CONSULTORIA - Soluções em Monitoramento${NC}"
-echo -e "${CIANO}Script desenvolvido por: Abraão Barbosa${NC}"
 echo
 
 # --- NOVA SEÇÃO DE LIMPEZA ---
