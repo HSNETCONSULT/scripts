@@ -63,7 +63,8 @@ echo -e "${MAGENTA}#################################################${NC}"
 echo
 
 apt update
-apt install -y acl curl fping git graphviz imagemagick mariadb-client mariadb-server mtr-tiny nginx-full nmap php-cli php-curl php-fpm php-gd php-gmp php-json php-mbstring php-mysql php-snmp php-xml php-zip rrdtool snmp snmpd unzip python3-command-runner python3-pymysql python3-dotenv python3-redis python3-setuptools python3-psutil python3-systemd python3-pip whois traceroute iputils-ping tcpdump vim cron
+# Adicionado redis-server e php-redis para estabilizar o poller
+apt install -y acl curl fping git graphviz imagemagick mariadb-client mariadb-server mtr-tiny nginx-full nmap php-cli php-curl php-fpm php-gd php-gmp php-json php-mbstring php-mysql php-snmp php-xml php-zip rrdtool snmp snmpd unzip python3-command-runner python3-pymysql python3-dotenv python3-redis python3-setuptools python3-psutil python3-systemd python3-pip whois traceroute iputils-ping tcpdump vim cron redis-server php-redis
 
 echo
 echo -e "${MAGENTA}#################################################${NC}"
@@ -115,7 +116,7 @@ sed -i "s|;date.timezone =|date.timezone = $TIMEZONE|" /etc/php/8.3/cli/php.ini
 timedatectl set-timezone $TIMEZONE
 
 echo -e "${MAGENTA}#################################################${NC}"
-echo -e "${MAGENTA}         Configurando MariaDB (MySQL)            ${NC}"
+echo -e "${MAGENTA}         Configurando MariaDB e Redis            ${NC}"
 echo -e "${MAGENTA}#################################################${NC}"
 echo
 
@@ -125,13 +126,10 @@ innodb_file_per_table=1 \
 lower_case_table_names=0' /etc/mysql/mariadb.conf.d/50-server.cnf
 fi
 
-echo -e "${MAGENTA}#################################################${NC}"
-echo -e "${MAGENTA}         Reiniciando serviço MariaDB             ${NC}"
-echo -e "${MAGENTA}#################################################${NC}"
-echo
-
 systemctl enable mariadb
 systemctl restart mariadb
+systemctl enable redis-server
+systemctl restart redis-server
 
 echo
 echo -e "${MAGENTA}#################################################${NC}"
@@ -187,16 +185,7 @@ server {
 }
 EOF
 
-echo
-echo -e "${MAGENTA}#################################################${NC}"
-echo -e "${MAGENTA}       Removendo configuração padrão Nginx       ${NC}"
-echo -e "${MAGENTA}#################################################${NC}"
-
 rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-available/default
-
-echo
-echo -e "${AMARELO}Reiniciando Nginx e PHP-FPM...${NC}"
-echo
 systemctl restart nginx
 systemctl restart php8.3-fpm
 
@@ -230,8 +219,8 @@ echo -e "${MAGENTA}#################################################${NC}"
 echo
 
 cp /opt/librenms/dist/librenms-scheduler.service /opt/librenms/dist/librenms-scheduler.timer /etc/systemd/system/
-systemctl enable librenms-scheduler.timer
-systemctl start librenms-scheduler.timer
+systemctl daemon-reload
+systemctl enable --now librenms-scheduler.timer
 
 echo
 echo -e "${MAGENTA}#################################################${NC}"
@@ -251,27 +240,22 @@ source s_net {
         tcp(port(514) flags(syslog-protocol));
         udp(port(514) flags(syslog-protocol));
 };
-
 destination d_librenms {
         program("/opt/librenms/syslog.php" template ("$HOST||$FACILITY||$PRIORITY||$LEVEL||$TAG||$R_YEAR-$R_MONTH-$R_DAY $R_HOUR:$R_MIN:$R_SEC||$MSG||$PROGRAM\n") template-escape(yes));
 };
-
 log {
         source(s_net);
         source(s_src);
         destination(d_librenms);
 };
 EOF
-
 chown librenms:librenms /opt/librenms/syslog.php
 chmod +x /opt/librenms/syslog.php
-
-echo -e "${AMARELO}Reiniciando syslog-ng...${NC}"
 systemctl restart syslog-ng
 
 echo
 echo -e "${MAGENTA}#################################################${NC}"
-echo -e "${MAGENTA}            Ajustando arquivo .env               ${NC}"
+echo -e "${MAGENTA}    Ajustando .env e Performance (Redis)         ${NC}"
 echo -e "${MAGENTA}#################################################${NC}"
 
 sed -i "s/#DB_HOST=/DB_HOST=localhost/" /opt/librenms/.env
@@ -281,13 +265,19 @@ sed -i "s/#DB_PASSWORD=/DB_PASSWORD=$DATABASEPASSWORD/" /opt/librenms/.env
 # Configura a APP_URL para evitar erros de navegação (como na logo)
 sed -i "s|#APP_URL=|APP_URL=http://$WEBSERVERHOSTNAME|" /opt/librenms/.env
 
+# Configurações de Performance para estabilizar o Poller (Redis)
+sed -i "s/CACHE_DRIVER=file/CACHE_DRIVER=redis/" /opt/librenms/.env || echo "CACHE_DRIVER=redis" >> /opt/librenms/.env
+sed -i "s/SESSION_DRIVER=file/SESSION_DRIVER=redis/" /opt/librenms/.env || echo "SESSION_DRIVER=redis" >> /opt/librenms/.env
+if ! grep -q "REDIS_HOST" /opt/librenms/.env; then
+    echo "REDIS_HOST=127.0.0.1" >> /opt/librenms/.env
+fi
+
 echo
 echo -e "${MAGENTA}#################################################${NC}"
 echo -e "${MAGENTA}         Corrigindo permissões de log            ${NC}"
 echo -e "${MAGENTA}#################################################${NC}"
 echo
 
-# Tenta corrigir a permissão se o arquivo existir, senão aguarda um pouco
 if [ -f /opt/librenms/logs/librenms.log ]; then
     chown librenms:librenms /opt/librenms/logs/librenms.log
 else
@@ -310,8 +300,8 @@ echo
 echo -e "4. Quando um dispositivo for monitorado, valide a instalação:"
 echo -e "${VERDE}su librenms -c /opt/librenms/validate.php${NC}"
 echo
-echo -e "4. Caso queira trocar o IP ou dominio de Acesso use esse comando:"
-echo -e "${VERDE}su - librenms -c "lnms config:set base_url http://NOVO_IP_OU_DOMINIO"${NC}"
+echo -e "5. Caso queira trocar o IP ou dominio de Acesso use esse comando:"
+echo -e "${VERDE}su - librenms -c \"lnms config:set base_url http://NOVO_IP_OU_DOMINIO\"${NC}"
 echo
 echo -e "${AZUL}HSNET CONSULTORIA - Soluções em Monitoramento${NC}"
 echo -e "${CIANO}Script desenvolvido por: Abraão Barbosa${NC}"
@@ -319,21 +309,13 @@ echo
 
 # --- NOVA SEÇÃO DE LIMPEZA ---
 echo -e "${AMARELO}Realizando limpeza final...${NC}"
-
-# Limpa o cache do apt
 apt-get clean
-
-# Remove o próprio script se ele estiver na pasta /tmp
 if [[ "$0" == "/tmp/"* ]]; then
     echo -e "${VERDE}Removendo script temporário de instalação...${NC}"
     rm -f "$0"
 fi
-
-# Limpa o histórico de comandos do shell atual
 history -c
-# Limpa o arquivo de histórico para que os comandos desta sessão não sejam salvos
 cat /dev/null > ~/.bash_history
-
 echo -e "${VERDE}Limpeza concluída!${NC}"
 
 exit 0
