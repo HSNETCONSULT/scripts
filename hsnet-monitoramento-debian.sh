@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script de Instalação LibreNMS - Adaptado para Debian
+# Script de Instalação LibreNMS - Adaptado para Debian (v2 Corrigida)
 # Baseado no script original da HSNET CONSULTORIA
 # Adaptado por: Manus AI
 
@@ -25,7 +25,7 @@ exibir_banner() {
     echo -e "${AMARELO} |_|  |_|_____/|_| \_|______|  |_|     \_____|\____/|_| \_|_____/ ${NC}"
     echo -e "${CIANO}                                                                 ${NC}"
     echo -e "${VERDE}                    HSNET CONSULTORIA                            ${NC}"
-    echo -e "${AZUL}                Versão Adaptada para Debian                      ${NC}"
+    echo -e "${AZUL}                Versão Corrigida para Debian                     ${NC}"
     echo -e "${CIANO}#################################################################${NC}"
     echo
 }
@@ -45,18 +45,16 @@ set -e
 DEBIAN_VERSION=$(cat /etc/debian_version | cut -d. -f1)
 echo -e "${AMARELO}>>> Versão do Debian detectada: ${VERDE}$DEBIAN_VERSION${NC}"
 
-# Definir versão do PHP baseada no Debian
-# Debian 12 (Bookworm) usa PHP 8.2
-# Debian 11 (Bullseye) usa PHP 7.4
-if [ "$DEBIAN_VERSION" -eq 12 ]; then
-    PHP_VER="8.2"
-elif [ "$DEBIAN_VERSION" -eq 11 ]; then
-    PHP_VER="7.4"
-else
-    # Tenta detectar se o PHP já está instalado ou usa 8.2 como fallback
-    PHP_VER=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null || echo "8.2")
-fi
+# Adicionar repositório SURY PHP para garantir PHP 8.2+ no Debian
+echo -e "${AMARELO}>>> Configurando repositório SURY PHP para garantir PHP 8.2+...${NC}"
+apt update
+apt install -y lsb-release apt-transport-https ca-certificates curl
+curl -sSLo /usr/share/keyrings/deb.sury.org-php.gpg https://packages.sury.org/php/apt.gpg
+echo "deb [signed-by=/usr/share/keyrings/deb.sury.org-php.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list
+apt update
 
+# Definir versão do PHP (LibreNMS exige 8.2+)
+PHP_VER="8.2"
 echo -e "${AMARELO}>>> Versão do PHP selecionada: ${VERDE}$PHP_VER${NC}"
 
 # Captura automática do IP da máquina
@@ -85,16 +83,14 @@ echo -e "${MAGENTA}       Instalando pacotes necessários            ${NC}"
 echo -e "${MAGENTA}#################################################${NC}"
 echo
 
-apt update
 apt install -y acl curl fping git graphviz imagemagick mariadb-client mariadb-server mtr-tiny nginx-full nmap \
 php${PHP_VER}-cli php${PHP_VER}-curl php${PHP_VER}-fpm php${PHP_VER}-gd php${PHP_VER}-gmp php${PHP_VER}-mbstring \
 php${PHP_VER}-mysql php${PHP_VER}-snmp php${PHP_VER}-xml php${PHP_VER}-zip rrdtool snmp snmpd unzip \
 python3-pymysql python3-dotenv python3-redis python3-setuptools python3-psutil python3-pip \
 whois traceroute iputils-ping tcpdump vim cron
 
-# Nota: python3-systemd e python3-command-runner podem não estar disponíveis em todas as versões do Debian
-# Instalando via apt se disponível, senão ignora (o LibreNMS funciona sem eles ou via pip)
-apt install -y python3-systemd python3-command-runner || echo -e "${AMARELO}Aviso: Alguns pacotes python opcionais não foram encontrados no repositório, continuando...${NC}"
+# Instalação de pacotes opcionais que podem falhar
+apt install -y python3-systemd || echo -e "${AMARELO}Aviso: python3-systemd não encontrado, continuando...${NC}"
 
 echo
 echo -e "${MAGENTA}#################################################${NC}"
@@ -132,7 +128,8 @@ echo -e "${MAGENTA}       Instalando dependências do Composer       ${NC}"
 echo -e "${MAGENTA}#################################################${NC}"
 echo
 
-su - librenms -c "/opt/librenms/scripts/composer_wrapper.php install --no-dev"
+# Garantir que o composer use a versão correta do PHP
+su - librenms -c "export PHP_BINARY=/usr/bin/php${PHP_VER}; /opt/librenms/scripts/composer_wrapper.php install --no-dev"
 
 echo
 echo -e "${MAGENTA}#################################################${NC}"
@@ -153,12 +150,10 @@ echo -e "${MAGENTA}         Configurando MariaDB (MySQL)            ${NC}"
 echo -e "${MAGENTA}#################################################${NC}"
 echo
 
-# No Debian, o caminho do arquivo de configuração pode ser diferente
 MARIADB_CONF="/etc/mysql/mariadb.conf.d/50-server.cnf"
 [ ! -f "$MARIADB_CONF" ] && MARIADB_CONF="/etc/mysql/my.cnf"
 
 if ! grep -q "innodb_file_per_table=1" "$MARIADB_CONF"; then
-    # Tenta encontrar a seção [mysqld] e adicionar as configurações
     sed -i '/\[mysqld\]/a \
 innodb_file_per_table=1 \
 lower_case_table_names=0' "$MARIADB_CONF"
@@ -313,7 +308,6 @@ echo -e "${MAGENTA}#################################################${NC}"
 echo -e "${MAGENTA}            Ajustando arquivo .env               ${NC}"
 echo -e "${MAGENTA}#################################################${NC}"
 
-# Criar .env se não existir
 if [ ! -f /opt/librenms/.env ]; then
     cp /opt/librenms/.env.example /opt/librenms/.env
     chown librenms:librenms /opt/librenms/.env
@@ -355,7 +349,7 @@ echo -e "5. Caso queira trocar o IP ou dominio de Acesso use esse comando:"
 echo -e "${VERDE}su - librenms -c \"lnms config:set base_url http://NOVO_IP_OU_DOMINIO\"${NC}"
 echo
 echo -e "${AZUL}HSNET CONSULTORIA - Soluções em Monitoramento${NC}"
-echo -e "${CIANO}Script adaptado para Debian por: Manus AI${NC}"
+echo -e "${CIANO}Script corrigido para Debian por: Manus AI${NC}"
 echo
 
 # --- LIMPEZA FINAL ---
