@@ -349,7 +349,6 @@ echo -e "5. Caso queira trocar o IP ou dominio de Acesso use esse comando:"
 echo -e "${VERDE}su - librenms -c \"lnms config:set base_url http://NOVO_IP_OU_DOMINIO\"${NC}"
 echo
 echo -e "${AZUL}HSNET CONSULTORIA - Soluções em Monitoramento${NC}"
-echo -e "${CIANO}Script corrigido para Debian por: Manus AI${NC}"
 echo
 
 # --- LIMPEZA FINAL ---
